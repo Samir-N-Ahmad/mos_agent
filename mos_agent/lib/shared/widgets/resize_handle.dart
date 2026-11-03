@@ -60,7 +60,9 @@ class ResizeHandle extends StatelessWidget {
                     height: vertical ? 14 : double.infinity,
                     color: focused
                         ? colors.primaryContainer
-                        : colors.surfaceContainerLow,
+                        : vertical
+                        ? colors.surfaceContainerHigh
+                        : colors.surface,
                     alignment: Alignment.center,
                     child: Container(
                       width: vertical ? 32 : 2,

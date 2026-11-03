@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/workspace_section.dart';
+import 'app_icon.dart';
 
 class WorkspaceSidebar extends StatelessWidget {
   const WorkspaceSidebar({
@@ -18,10 +19,7 @@ class WorkspaceSidebar extends StatelessWidget {
     return SizedBox(
       width: 60,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          border: Border(right: BorderSide(color: colors.outlineVariant)),
-        ),
+        decoration: BoxDecoration(color: colors.surface),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
@@ -56,7 +54,9 @@ class WorkspaceSidebar extends StatelessWidget {
                                     section.selectedIcon,
                                     color: colors.onSecondaryContainer,
                                   ),
-                                  icon: Icon(section.icon),
+                                  icon: section == WorkspaceSection.settings
+                                      ? const AppIcon(AppIconType.settings)
+                                      : Icon(section.icon),
                                   onPressed: () => onSelected(section),
                                 ),
                               ),

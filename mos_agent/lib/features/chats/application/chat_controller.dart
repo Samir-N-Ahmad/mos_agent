@@ -40,6 +40,8 @@ class ChatController extends ChangeNotifier {
   bool get isDemo => _backend == null;
   Uri? get destination => _backend?.destination;
   final Map<String, Object> _runs = {};
+  final Set<String> _cancellations = {};
+  bool get cancellationPending => _cancellations.isNotEmpty;
   List<ChatMode> _modes = ChatMode.demoModes;
   List<ChatMode> get modes => List.unmodifiable(_modes);
   ChatMode? get defaultMode =>
@@ -255,6 +257,14 @@ class ChatController extends ChangeNotifier {
     if (_disposed || current.sending || current.draft.trim().isEmpty) {
       return false;
     }
+    if (cancellationPending) {
+      _replace(
+        current.copyWith(
+          error: 'Wait for the cancellation request to finish before sending.',
+        ),
+      );
+      return false;
+    }
     if (status != BackendStatus.ready) {
       _replace(
         current.copyWith(
@@ -369,11 +379,7 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  void stopReceiving(String id) {
-    final current = thread(id);
-    if (_backend == null || !current.sending) return;
-    _runs.remove(id);
-    if (current.backendId != null) _backend.stopReceiving(current.backendId!);
+  List<ChatMessage> _interruptedMessages(ChatThread current) {
     final messages = current.messages.toList();
     if (messages.isNotEmpty &&
         messages.last.delivery == MessageDelivery.streaming) {
@@ -383,10 +389,88 @@ class ChatController extends ChangeNotifier {
         delivery: MessageDelivery.interrupted,
       );
     }
+    return messages;
+  }
+
+  Future<void> cancelGeneration(String id) async {
+    final current = thread(id);
+    if (_disposed ||
+        _backend == null ||
+        !current.sending ||
+        _cancellations.contains(id)) {
+      return;
+    }
+    _runs.remove(id);
+    final remoteId = current.backendId;
+    if (remoteId == null) {
+      _replace(
+        current.copyWith(
+          sending: false,
+          messages: _interruptedMessages(current),
+          notice: 'Stopped before generation started. Your draft is kept.',
+        ),
+      );
+      return;
+    }
+    _cancellations.add(id);
+    _replace(
+      current.copyWith(
+        cancelling: true,
+        messages: _interruptedMessages(current),
+      ),
+    );
+    try {
+      final confirmed = await _backend.cancelGeneration(remoteId);
+      if (_disposed) return;
+      final latest = thread(id);
+      final messages = latest.messages.toList();
+      if (confirmed &&
+          messages.isNotEmpty &&
+          !messages.last.fromUser &&
+          messages.last.delivery == MessageDelivery.interrupted) {
+        messages[messages.length - 1] = ChatMessage(
+          text: messages.last.text,
+          fromUser: false,
+          delivery: MessageDelivery.cancelled,
+        );
+      }
+      _replace(
+        latest.copyWith(
+          sending: false,
+          cancelling: false,
+          messages: messages,
+          notice: confirmed
+              ? 'Generation cancelled. Your draft and partial reply are kept.'
+              : 'The service did not confirm cancellation. Local response stopped; your draft is kept.',
+        ),
+      );
+    } catch (error) {
+      if (_disposed) return;
+      _replace(
+        thread(id).copyWith(
+          sending: false,
+          cancelling: false,
+          error:
+              'Cancellation could not be confirmed. ${_failureText(error)} Server generation may continue. Your draft is kept.',
+        ),
+      );
+    } finally {
+      _backend.stopReceiving(remoteId);
+      _cancellations.remove(id);
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  /// Local reception only; does not request server cancellation.
+  void stopReceiving(String id) {
+    final current = thread(id);
+    if (_backend == null || !current.sending || current.cancelling) return;
+    _runs.remove(id);
+    if (current.backendId != null) _backend.stopReceiving(current.backendId!);
     _replace(
       current.copyWith(
         sending: false,
-        messages: messages,
+        messages: _interruptedMessages(current),
         error: 'Stopped receiving. Server generation may continue. Your draft is kept; resend only if safe.',
       ),
     );

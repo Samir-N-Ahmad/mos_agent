@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../shared/widgets/resize_handle.dart';
+import '../../../shared/widgets/app_icon.dart';
 import '../domain/chat.dart';
 
 class ChatComposer extends StatefulWidget {
@@ -16,7 +17,7 @@ class ChatComposer extends StatefulWidget {
     required this.pickingFiles,
     this.demoMode = true,
     this.sendingAllowed = true,
-    this.onStopReceiving,
+    this.onCancelGeneration,
   });
   final ChatThread thread;
   final ValueChanged<String> onDraft;
@@ -27,7 +28,7 @@ class ChatComposer extends StatefulWidget {
   final bool pickingFiles;
   final bool demoMode;
   final bool sendingAllowed;
-  final VoidCallback? onStopReceiving;
+  final VoidCallback? onCancelGeneration;
 
   @override
   State<ChatComposer> createState() => _ChatComposerState();
@@ -99,15 +100,14 @@ class _ChatComposerState extends State<ChatComposer> {
         (widget.thread.draft.trim().isNotEmpty ||
             widget.thread.attachments.isNotEmpty);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.fromLTRB(28, 0, 28, 4),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             decoration: BoxDecoration(
-              color: colors.surfaceContainer,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: colors.outlineVariant),
+              color: colors.surfaceContainerHigh,
+              borderRadius: BorderRadius.circular(28),
             ),
             clipBehavior: Clip.antiAlias,
             child: Column(
@@ -159,6 +159,7 @@ class _ChatComposerState extends State<ChatComposer> {
                     controller: _text,
                     focusNode: _focus,
                     readOnly: widget.thread.sending,
+                    style: Theme.of(context).textTheme.bodyLarge,
                     expands: true,
                     minLines: null,
                     maxLines: null,
@@ -190,19 +191,27 @@ class _ChatComposerState extends State<ChatComposer> {
                         onPressed: busy || !widget.demoMode
                             ? null
                             : widget.onAttach,
-                        icon: const Icon(Icons.add),
+                        icon: const AppIcon(AppIconType.plus),
                       ),
                       IconButton(
                         tooltip: 'Agent and chat configuration',
                         onPressed: busy ? null : widget.onConfigure,
-                        icon: const Icon(Icons.tune),
+                        icon: const AppIcon(AppIconType.settings),
                       ),
                       const Spacer(),
                       if (widget.thread.sending &&
-                          widget.onStopReceiving != null)
+                          widget.onCancelGeneration != null)
                         IconButton.filled(
-                          tooltip: 'Stop receiving response',
-                          onPressed: widget.onStopReceiving,
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.primary,
+                            foregroundColor: colors.onPrimary,
+                          ),
+                          tooltip: widget.thread.cancelling
+                              ? 'Cancelling generation…'
+                              : 'Cancel generation',
+                          onPressed: widget.thread.cancelling
+                              ? null
+                              : widget.onCancelGeneration,
                           icon: const Icon(Icons.stop),
                         )
                       else if (widget.thread.sending)
@@ -219,6 +228,10 @@ class _ChatComposerState extends State<ChatComposer> {
                         )
                       else
                         IconButton.filled(
+                          style: IconButton.styleFrom(
+                            backgroundColor: colors.primary,
+                            foregroundColor: colors.onPrimary,
+                          ),
                           tooltip: 'Send message',
                           onPressed: canSend ? widget.onSend : null,
                           icon: const Icon(Icons.arrow_upward),

@@ -17,11 +17,16 @@ class FakeBackend implements InferenceBackend {
   final modes = <ChatMode>[];
   List<ChatMode> availableModes = ChatMode.demoModes;
   bool failModes = false;
+  bool failCancel = false;
+  bool cancelResult = true;
+  Completer<void>? pendingCancel;
+  Completer<void>? pendingStart;
   @override
   Uri get destination => Uri.parse('http://127.0.0.1:8000');
   @override
   Future<void> start() async {
     events.add('start');
+    if (pendingStart != null) await pendingStart!.future;
     if (failStart) {
       throw const InferenceFailure(
         InferenceFailureKind.connection,
@@ -62,6 +67,19 @@ class FakeBackend implements InferenceBackend {
   }
 
   @override
+  Future<bool> cancelGeneration(String id) async {
+    events.add('cancel:$id');
+    if (failCancel) {
+      throw const InferenceFailure(
+        InferenceFailureKind.server,
+        'Cancellation failed',
+      );
+    }
+    if (pendingCancel != null) await pendingCancel!.future;
+    return cancelResult;
+  }
+
+  @override
   void stopReceiving(String id) {
     events.add('stop:$id');
   }
@@ -74,6 +92,43 @@ class FakeBackend implements InferenceBackend {
 }
 
 void main() {
+  testWidgets(
+    'Icon-only power shows a neighboring spinner during inference startup',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final backend = FakeBackend()..pendingStart = Completer<void>();
+      final controller = ChatController(backend: backend);
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ChatsWorkspace(
+              controller: controller,
+              attachmentPicker: NativeAttachmentPicker(),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Start inference'), findsNothing);
+      await tester.tap(
+        find.byTooltip('Start inference · http://127.0.0.1:8000'),
+      );
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(controller.status, BackendStatus.starting);
+      backend.pendingStart!.complete();
+      await tester.pumpAndSettle();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(
+        find.byTooltip('Inference ready · http://127.0.0.1:8000'),
+        findsOneWidget,
+      );
+    },
+  );
+
   test('Connect starts inference then creates a server chat; duplicate connect is blocked', () async {
     final backend = FakeBackend();
     final controller = ChatController(backend: backend);
@@ -229,10 +284,7 @@ void main() {
           ),
         ),
       );
-      expect(
-        find.textContaining('Messages sent to http://127.0.0.1:8000'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('http://127.0.0.1:8000'), findsOneWidget);
       expect(
         tester
             .widget<IconButton>(
@@ -241,12 +293,24 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tester.tap(find.text('Start inference'));
+      await tester.tap(
+        find.byTooltip('Start inference · http://127.0.0.1:8000'),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('Inference ready'), findsOneWidget);
+      expect(
+        find.byTooltip('Inference ready · http://127.0.0.1:8000'),
+        findsOneWidget,
+      );
       expect(
         tester
-            .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add))
+            .widget<IconButton>(
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip ==
+                        'Attachments unavailable — backend supports text only',
+              ),
+            )
             .onPressed,
         isNull,
       );
@@ -260,13 +324,13 @@ void main() {
       backend.chunks.add('First chunk');
       await tester.pump();
       expect(find.text('First chunk'), findsOneWidget);
-      expect(find.text('Agent'), findsOneWidget);
-      expect(find.text('Agent · Demo'), findsNothing);
-      expect(find.byTooltip('Stop receiving response'), findsOneWidget);
+      expect(find.text('MOS Agent'), findsOneWidget);
+      expect(find.text('MOS Agent · Demo'), findsNothing);
+      expect(find.byTooltip('Cancel generation'), findsOneWidget);
       backend.chunks.add(' and second');
       await backend.chunks.close();
       await tester.pumpAndSettle();
-      expect(find.text('First chunk and second'), findsOneWidget);
+      expect(find.text('First chunk and second'), findsNWidgets(2));
       expect(
         tester
             .widget<TextField>(find.byKey(const ValueKey('message-input')))
@@ -331,11 +395,11 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Classification').last);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('New chat').first);
+      await tester.tap(find.byTooltip('New chat'));
       await tester.pumpAndSettle();
       expect(controller.active.mode, ChatMode.classification);
       expect(backend.modes, [ChatMode.chat, ChatMode.classification]);
-      expect(find.text('Classification mode'), findsOneWidget);
+      expect(find.textContaining('Classification ·'), findsOneWidget);
     },
   );
 
@@ -407,9 +471,143 @@ void main() {
     );
     expect(selector.items!.map((item) => item.value!.name), ['SUMMARIZE']);
     expect(selector.value, extra);
-    await tester.tap(find.text('New chat').first);
+    await tester.tap(find.byTooltip('New chat'));
     await tester.pumpAndSettle();
     expect(controller.active.mode, extra);
     expect(backend.modes, [extra, extra]);
+  });
+
+  test('Server cancellation targets its original chat, blocks duplicates, and ignores late chunks', () async {
+    final backend = FakeBackend()..pendingCancel = Completer<void>();
+    final controller = ChatController(backend: backend);
+    addTearDown(controller.dispose);
+    await controller.connect();
+    final id = controller.active.id;
+    controller.updateDraft(id, 'Keep this draft');
+    final send = controller.send(id);
+    backend.chunks.add('Partial answer');
+    await Future<void>.delayed(Duration.zero);
+    final cancel = controller.cancelGeneration(id);
+    expect(controller.thread(id).cancelling, isTrue);
+    await controller.cancelGeneration(id);
+    expect(backend.events.where((e) => e.startsWith('cancel:')), ['cancel:0']);
+    await controller.newChat();
+    final otherId = controller.active.id;
+    controller.updateDraft(otherId, 'Other draft');
+    expect(await controller.send(otherId), isFalse);
+    backend.chunks.add(' must be ignored');
+    await Future<void>.delayed(Duration.zero);
+    backend.pendingCancel!.complete();
+    await cancel;
+    await backend.chunks.close();
+    expect(await send, isFalse);
+    expect(controller.thread(id).messages.last.text, 'Partial answer');
+    expect(
+      controller.thread(id).messages.last.delivery,
+      MessageDelivery.cancelled,
+    );
+    expect(controller.thread(id).notice, contains('Generation cancelled'));
+    expect(controller.thread(id).draft, 'Keep this draft');
+    expect(controller.thread(id).sending, isFalse);
+    expect(controller.thread(id).cancelling, isFalse);
+    expect(controller.cancellationPending, isFalse);
+    expect(controller.active.id, otherId);
+    expect(controller.active.draft, 'Other draft');
+    expect(controller.active.notice, isNull);
+    expect(backend.events, contains('stop:0'));
+  });
+
+  test(
+    'False cancellation results and failures never label a reply cancelled',
+    () async {
+      for (final fail in [false, true]) {
+        final backend = FakeBackend()
+          ..cancelResult = false
+          ..failCancel = fail;
+        final controller = ChatController(backend: backend);
+        await controller.connect();
+        final id = controller.active.id;
+        controller.updateDraft(id, 'Keep this');
+        final send = controller.send(id);
+        backend.chunks.add('Partial');
+        await Future<void>.delayed(Duration.zero);
+        await controller.cancelGeneration(id);
+        await backend.chunks.close();
+        expect(await send, isFalse);
+        expect(
+          controller.active.messages.last.delivery,
+          MessageDelivery.interrupted,
+        );
+        expect(controller.active.draft, 'Keep this');
+        expect(controller.active.sending, isFalse);
+        expect(controller.active.cancelling, isFalse);
+        expect(
+          fail ? controller.active.error : controller.active.notice,
+          contains(fail ? 'not be confirmed' : 'not confirm'),
+        );
+        controller.dispose();
+      }
+    },
+  );
+
+  test('No cancellation request is sent for an idle chat', () async {
+    final backend = FakeBackend();
+    final controller = ChatController(backend: backend);
+    addTearDown(controller.dispose);
+    await controller.connect();
+    await controller.cancelGeneration(controller.active.id);
+    expect(backend.events.where((e) => e.startsWith('cancel:')), isEmpty);
+  });
+
+  testWidgets('Cancel button shows pending state and confirmed cancellation', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final backend = FakeBackend()..pendingCancel = Completer<void>();
+    final controller = ChatController(backend: backend);
+    addTearDown(controller.dispose);
+    await controller.connect();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ChatsWorkspace(
+            controller: controller,
+            attachmentPicker: NativeAttachmentPicker(),
+          ),
+        ),
+      ),
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('message-input')),
+      'Cancel this',
+    );
+    await tester.pump();
+    await tester.tap(find.byTooltip('Send message'));
+    await tester.pump();
+    backend.chunks.add('Partial reply');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Cancel generation'));
+    await tester.pump();
+    final button = tester.widget<IconButton>(
+      find.widgetWithIcon(IconButton, Icons.stop),
+    );
+    expect(button.onPressed, isNull);
+    expect(find.byTooltip('Cancelling generation…'), findsOneWidget);
+    backend.pendingCancel!.complete();
+    await tester.pump();
+    await backend.chunks.close();
+    await tester.pumpAndSettle();
+    expect(find.text('Cancelled response'), findsOneWidget);
+    expect(find.textContaining('Generation cancelled.'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('message-input')))
+          .controller!
+          .text,
+      'Cancel this',
+    );
   });
 }

@@ -221,7 +221,7 @@ void main() {
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(controller.active.style, ReplyStyle.detailed);
-    await tester.tap(find.text('New chat'));
+    await tester.tap(find.byTooltip('New chat'));
     await tester.pump();
     expect(controller.active.messages, isEmpty);
     expect(controller.active.style, ReplyStyle.concise);
@@ -276,7 +276,7 @@ void main() {
     await tester.pumpWidget(
       RepaintBoundary(
         key: const ValueKey('chat-preview'),
-        child: const HelpDeskApp(),
+        child: const HelpDeskApp(demoMode: true),
       ),
     );
     await tester.enterText(
@@ -286,6 +286,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     if (const bool.fromEnvironment('CAPTURE_UI')) {
+      await tester.runAsync(() async {
+        final context = tester.element(find.byType(ChatsWorkspace));
+        for (final name in ['share', 'plus', 'settings', 'bot', 'shutdown', 'wrench']) {
+          await precacheImage(AssetImage('assets/icons/$name.png'), context);
+        }
+      });
+      await tester.pumpAndSettle();
       await tester.runAsync(() async {
         final boundary = tester.renderObject<RenderRepaintBoundary>(
           find.byKey(const ValueKey('chat-preview')),

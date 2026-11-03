@@ -4,7 +4,7 @@ class ChatAttachment {
   final String name;
 }
 
-enum MessageDelivery { complete, streaming, interrupted }
+enum MessageDelivery { complete, streaming, interrupted, cancelled }
 
 class ChatMessage {
   ChatMessage({
@@ -52,6 +52,8 @@ class ChatThread {
     this.style = ReplyStyle.concise,
     this.role = AgentRole.assistant,
     this.sending = false,
+    this.cancelling = false,
+    this.notice,
     this.error,
     this.backendId,
   }) : messages = List.unmodifiable(messages),
@@ -66,6 +68,8 @@ class ChatThread {
   final ReplyStyle style;
   final AgentRole role;
   final bool sending;
+  final bool cancelling;
+  final String? notice;
   final String? error;
   final String? backendId;
 
@@ -77,6 +81,8 @@ class ChatThread {
     ReplyStyle? style,
     AgentRole? role,
     bool? sending,
+    bool? cancelling,
+    String? notice,
     String? error,
     String? backendId,
     ChatMode? mode,
@@ -90,6 +96,8 @@ class ChatThread {
     style: style ?? this.style,
     role: role ?? this.role,
     sending: sending ?? this.sending,
+    cancelling: cancelling ?? this.cancelling,
+    notice: notice,
     error: error,
     backendId: backendId ?? this.backendId,
   );

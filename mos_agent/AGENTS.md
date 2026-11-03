@@ -15,6 +15,7 @@ Preserve these observed conventions:
 - Keep reusable UI widgets small and separate from the application entry point.
 - Use a sidebar for the desktop workspace and a bottom prompt composer for assistance.
 - Give the composer empty-input protection, clear send availability, multiline input, Enter to send, and Shift+Enter for a newline when using a physical keyboard.
+- Use the supplied MOS Agent reference styling and PNG icons for the accepted redesign. Keep shared light/dark palette and typography tokens; dark remains the default. Inference starts through the top-right icon-only power control with an adjacent loading indicator. The bottom-right diagnostics control opens a separate macOS logs window, with bounded session-only raw API diagnostics.
 - Bundle sample visual assets explicitly through `pubspec.yaml` and use `ImageProvider` where widgets need interchangeable image sources.
 - Maintain Flutter linting, null safety, and a committed application dependency lockfile. Moaather declares Dart `^3.10.7`; select and document a compatible Flutter/Dart toolchain for the new app instead of blindly copying that version.
 - Keep platform-specific implementations behind Flutter-facing interfaces.

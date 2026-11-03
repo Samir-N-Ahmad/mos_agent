@@ -6,6 +6,9 @@ abstract interface class InferenceBackend {
   Future<List<ChatMode>> fetchModes();
   Future<String> newChat({required ChatMode mode});
   Stream<String> send(String chatId, String message);
+
+  /// Returns true only when the service confirms generation was cancelled.
+  Future<bool> cancelGeneration(String chatId);
   void stopReceiving(String chatId);
   void close();
 }

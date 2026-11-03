@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../domain/chat.dart';
+import '../../../shared/widgets/app_icon.dart';
+import 'chat_message_card.dart';
 
 class ChatConversation extends StatefulWidget {
   const ChatConversation({
@@ -50,14 +52,31 @@ class _ChatConversationState extends State<ChatConversation> {
 
   @override
   Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
     if (widget.thread.messages.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text(
-            'How can I help?\nStart a conversation with your agent.',
-            textAlign: TextAlign.center,
+      return Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const AppIcon(AppIconType.bot, size: 48),
+                const SizedBox(height: 24),
+                Text(
+                  'How can I help?',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Start a conversation with MOS Agent.',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -65,63 +84,12 @@ class _ChatConversationState extends State<ChatConversation> {
     return SelectionArea(
       child: ListView.builder(
         controller: _scroll,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 32),
         itemCount: widget.thread.messages.length,
-        itemBuilder: (context, index) {
-          final message = widget.thread.messages[index];
-          return Align(
-            alignment: message.fromUser
-                ? Alignment.centerRight
-                : Alignment.centerLeft,
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 760),
-              margin: const EdgeInsets.only(bottom: 24),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: message.fromUser
-                    ? colors.surfaceContainerHigh
-                    : colors.surface,
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    message.fromUser
-                        ? 'You'
-                        : widget.demoMode
-                        ? 'Agent · Demo'
-                        : 'Agent',
-                    style: Theme.of(context).textTheme.labelMedium
-                        ?.copyWith(color: colors.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 8),
-                  if (message.delivery != MessageDelivery.complete)
-                    Text(
-                      message.delivery == MessageDelivery.streaming
-                          ? 'Responding…'
-                          : 'Incomplete response',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                  if (message.text.isNotEmpty)
-                    Text(
-                      message.text,
-                      style: Theme.of(context).textTheme.bodyLarge
-                          ?.copyWith(height: 1.6),
-                    ),
-                  for (final file in message.attachments)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '📎 ${file.name}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        },
+        itemBuilder: (context, index) => ChatMessageCard(
+          message: widget.thread.messages[index],
+          demoMode: widget.demoMode,
+        ),
       ),
     );
   }

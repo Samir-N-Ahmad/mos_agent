@@ -56,24 +56,25 @@ class _WorkspaceShellState extends State<WorkspaceShell> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 28,
-                      vertical: 22,
-                    ),
-                    decoration: BoxDecoration(
-                      border: Border(
-                        bottom: BorderSide(color: colors.outlineVariant),
+                  if (_section != WorkspaceSection.chats)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 22,
+                      ),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: colors.outlineVariant),
+                        ),
+                      ),
+                      child: Semantics(
+                        header: true,
+                        child: Text(
+                          _section.title,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
                       ),
                     ),
-                    child: Semantics(
-                      header: true,
-                      child: Text(
-                        _section.title,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ),
-                  ),
                   Expanded(
                     child: IndexedStack(
                       index: _section == WorkspaceSection.chats ? 0 : 1,

@@ -30,6 +30,7 @@ for timings, regression coverage, and the repeatable probe.
 | Discover modes | `GET /inference/modes` | `{"code":200,"modes":[{"name":"CLASSIFICATION","value":0},{"name":"CHAT","value":1}]}` |
 | Create chat | `GET /chat/new/{mode}` | `{"code":200,"inference":0}`; zero is a valid chat ID |
 | Send latest message | `GET /send/{chat_id}/{messages}` | Chunked `text/plain; charset=utf-8` |
+| Cancel generation | `POST /cancel/{chat_id}/?chatId={chat_id}` | `{"code":200,"inference":true}` or `false` |
 
 The current catalogue maps CLASSIFICATION to `/chat/new/0` and CHAT to
 `/chat/new/1`. The adapter does not derive values from list order or send boolean
@@ -91,9 +92,12 @@ Demo mode uses fixture chats and deterministic replies without network calls.
 - Failed sends retain the draft; partial answers remain labeled incomplete.
   An interrupted request may have reached the server. A manual resend is a new
   request and could repeat work; there is no idempotency contract in this API.
-- **Stop receiving** closes the client response connection and ignores late
-  chunks. It cannot claim to cancel server generation: no cancellation endpoint
-  was provided. Disposing the controller closes its clients.
+- **Cancel generation** sends a scoped server cancellation request. During the
+  request, repeat clicks and new sends are blocked, and late chunks are ignored.
+  A boolean `true` marks the partial answer cancelled. A `false`, timeout, invalid
+  response, or HTTP error never claims server cancellation. Local reception is
+  closed after the attempt; the draft and partial answer are preserved.
+  Disposing the controller closes its clients without issuing new POST requests.
 - Defaults: 60-second header/status wait, 60-second stream idle timeout,
   3-minute generation limit, 1 MiB streamed-response limit, and 64 KiB JSON
   status-response limit. Constructor parameters make these limits testable.
@@ -146,3 +150,47 @@ flutter test test/stream_delivery_live_test.dart --dart-define=LIVE_INFERENCE=tr
 This separate opt-in probe prints chunk counts and arrival times without message
 content. A chunked response can still arrive entirely at completion; see the
 [measured delivery report](streaming_diagnostics.md).
+
+
+## Server cancellation — 2 November 2026
+
+The user added `POST /cancel/{chat_id}/` and confirmed that
+`inf.stop_generation(chatId)` returns a boolean. The adapter requires a valid
+JSON object with `code: 200` and a boolean `inference` field. Only `true` is treated
+as confirmed cancellation; `false` is displayed as no cancellation confirmed.
+Errors and ambiguous outcomes preserve the draft and partial answer, and the
+POST is never retried automatically.
+
+The live schema declares `chatId` as a required **query** argument because the
+handler uses `cancel(chatId: str)` while the route names `{chat_id}`. The client
+supplies the same ID in both places for compatibility, with the required trailing
+slash and redirects disabled. To bind the path directly, align the names:
+
+```python
+@app.post("/cancel/{chat_id}/")
+async def cancel(chat_id: str):
+    result = await inf.stop_generation(chat_id)
+    return {"code": 200, "inference": result}
+```
+
+The route must pass the requested ID to the generation service, as the user
+confirmed, to scope cancellation to that chat. The adapter does not use a global
+cancel operation.
+
+The latest live test created a fresh synthetic chat, sent a request, waited for
+its response headers, and issued cancellation. The cancellation POST returned
+HTTP 500 in approximately 12 ms. Server cancellation could not be verified; the
+backend traceback is needed to determine why it failed. The client correctly
+reported failure, kept the draft, and did not claim cancellation. No inference
+service source was modified in this repository.
+
+Repeat the opt-in live cancellation check after repairing the backend exception:
+
+```sh
+flutter test test/cancellation_live_test.dart --dart-define=LIVE_CANCELLATION=true
+```
+
+This test creates and cancels a synthetic generation on the configured service.
+Normal tests use fake backends and cover true/false outcomes, malformed responses,
+HTTP failures, duplicate clicks, late chunks, conversation isolation, pending
+UI state, and retained drafts.

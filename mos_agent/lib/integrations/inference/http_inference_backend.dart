@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../../features/chats/domain/inference_backend.dart';
 import '../../features/chats/domain/chat.dart';
 import 'assistant_text_stream.dart';
+import '../../core/diagnostics/app_log.dart';
 
 class HttpInferenceBackend implements InferenceBackend {
   HttpInferenceBackend({
@@ -73,15 +75,30 @@ class HttpInferenceBackend implements InferenceBackend {
     },
   );
 
-  Future<Object?> _getJson(List<String> segments) async {
+  Future<Object?> _getJson(
+    List<String> segments, {
+    String method = 'GET',
+    Map<String, String>? queryParameters,
+  }) async {
     final client = _client();
+    final route = segments.first == 'cancel'
+        ? '/cancel/{chat_id}/'
+        : '/${segments.join('/')}';
+    final operation = '$method $route';
+    AppLog.instance.add('API request', operation);
     try {
       final response = await client
-          .send(http.Request('GET', _uri(segments))..followRedirects = false)
+          .send(
+            http.Request(
+              method,
+              _uri(segments).replace(queryParameters: queryParameters),
+            )..followRedirects = false,
+          )
           .timeout(requestTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw _status(response.statusCode);
-      }
+      AppLog.instance.add(
+        'API status',
+        '$operation → HTTP ${response.statusCode}',
+      );
       var count = 0;
       final body = await response.stream
           .map((bytes) {
@@ -97,6 +114,10 @@ class HttpInferenceBackend implements InferenceBackend {
           .transform(utf8.decoder)
           .join()
           .timeout(requestTimeout);
+      AppLog.instance.add('API raw response', body);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _status(response.statusCode);
+      }
       final value = jsonDecode(body);
       if (value is Map && value['code'] != null && value['code'] != 200) {
         throw const InferenceFailure(
@@ -105,19 +126,23 @@ class HttpInferenceBackend implements InferenceBackend {
         );
       }
       return value;
-    } on InferenceFailure {
+    } on InferenceFailure catch (error) {
+      AppLog.instance.add('API error', error.message);
       rethrow;
     } on TimeoutException {
+      AppLog.instance.add('API error', 'Request timed out');
       throw const InferenceFailure(
         InferenceFailureKind.timeout,
         'The inference service timed out. The operation may still be running.',
       );
     } on FormatException {
+      AppLog.instance.add('API error', 'Invalid JSON response');
       throw const InferenceFailure(
         InferenceFailureKind.protocol,
         'The service returned invalid JSON.',
       );
-    } catch (_) {
+    } catch (error) {
+      AppLog.instance.add('API error', error.runtimeType.toString());
       throw const InferenceFailure(
         InferenceFailureKind.connection,
         'Could not reach the inference service. Check that it is running.',
@@ -125,6 +150,26 @@ class HttpInferenceBackend implements InferenceBackend {
     } finally {
       client.close();
       _clients.remove(client);
+    }
+  }
+
+  Future<void> _recordErrorBody(http.StreamedResponse response) async {
+    final bytes = BytesBuilder(copy: false);
+    try {
+      await for (final chunk in response.stream.timeout(streamTimeout)) {
+        final remaining = 64 * 1024 - bytes.length;
+        bytes.add(chunk.take(remaining).toList());
+        if (bytes.length >= 64 * 1024) break;
+      }
+      AppLog.instance.add(
+        'API raw error response',
+        utf8.decode(bytes.takeBytes(), allowMalformed: true),
+      );
+    } catch (_) {
+      AppLog.instance.add(
+        'API raw error response',
+        'Error body could not be read completely.',
+      );
     }
   }
 
@@ -207,6 +252,10 @@ class HttpInferenceBackend implements InferenceBackend {
     }
     final client = _client();
     _streams[chatId] = client;
+    AppLog.instance.add(
+      'API request',
+      'GET /send/{chat_id}/{message} · prompt omitted',
+    );
     var deadlineReached = false;
     final deadline = Timer(runTimeout, () {
       deadlineReached = true;
@@ -218,7 +267,12 @@ class HttpInferenceBackend implements InferenceBackend {
       request.headers['Accept'] = 'text/plain';
       request.headers['Cache-Control'] = 'no-store';
       final response = await client.send(request).timeout(requestTimeout);
+      AppLog.instance.add(
+        'API stream status',
+        'HTTP ${response.statusCode} · ${response.headers['content-type']}',
+      );
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        await _recordErrorBody(response);
         throw _status(response.statusCode);
       }
       final type = response.headers['content-type']?.split(';').first.trim();
@@ -242,7 +296,11 @@ class HttpInferenceBackend implements InferenceBackend {
             }
             return bytes;
           })
-          .transform(utf8.decoder);
+          .transform(utf8.decoder)
+          .map((raw) {
+            AppLog.instance.add('API raw stream', raw);
+            return raw;
+          });
       await for (final delta in assistantTextStream(
         text,
         userMessage: message,
@@ -252,6 +310,7 @@ class HttpInferenceBackend implements InferenceBackend {
           yield delta;
         }
       }
+      AppLog.instance.add('API stream', 'Stream completed');
       if (deadlineReached) throw TimeoutException('Run deadline');
       if (!hasText) {
         throw const InferenceFailure(
@@ -259,14 +318,17 @@ class HttpInferenceBackend implements InferenceBackend {
           'The inference service returned an empty response.',
         );
       }
-    } on InferenceFailure {
+    } on InferenceFailure catch (error) {
+      AppLog.instance.add('API error', error.message);
       rethrow;
     } on TimeoutException {
+      AppLog.instance.add('API error', 'Request timed out');
       throw const InferenceFailure(
         InferenceFailureKind.timeout,
         'Response timed out. The server may still be processing; your draft is kept.',
       );
-    } catch (_) {
+    } catch (error) {
+      AppLog.instance.add('API error', error.runtimeType.toString());
       throw InferenceFailure(
         deadlineReached
             ? InferenceFailureKind.timeout
@@ -279,6 +341,24 @@ class HttpInferenceBackend implements InferenceBackend {
       _clients.remove(client);
       if (_streams[chatId] == client) _streams.remove(chatId);
     }
+  }
+
+  @override
+  Future<bool> cancelGeneration(String chatId) async {
+    // The deployed handler currently declares chatId as a query parameter.
+    // Supply both forms once; do not retry a potentially committed POST.
+    final value = await _getJson(
+      ['cancel', chatId, ''],
+      method: 'POST',
+      queryParameters: {'chatId': chatId},
+    );
+    if (value is! Map || value['code'] != 200 || value['inference'] is! bool) {
+      throw const InferenceFailure(
+        InferenceFailureKind.protocol,
+        'The service did not return a boolean cancellation result.',
+      );
+    }
+    return value['inference'] as bool;
   }
 
   @override

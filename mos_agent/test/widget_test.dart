@@ -15,11 +15,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(const HelpDeskApp());
     expect(tester.getSize(find.byType(WorkspaceSidebar)), const Size(60, 800));
-    expect(find.text('Chats'), findsOneWidget);
+    expect(find.text('Chat History'), findsOneWidget);
     for (final section in WorkspaceSection.values) {
       await tester.tap(find.byTooltip(section.title));
       await tester.pumpAndSettle();
-      expect(find.text(section.title), findsOneWidget);
+      expect(
+        find.text(
+          section == WorkspaceSection.chats ? 'Chat History' : section.title,
+        ),
+        findsOneWidget,
+      );
       if (section == WorkspaceSection.chats) {
         expect(find.byKey(const ValueKey('message-input')), findsOneWidget);
       } else {
@@ -58,7 +63,12 @@ void main() {
     for (final section in WorkspaceSection.values) {
       await tester.tap(find.byTooltip(section.title));
       await tester.pumpAndSettle();
-      expect(find.text(section.title), findsOneWidget);
+      expect(
+        find.text(
+          section == WorkspaceSection.chats ? 'New chat' : section.title,
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     }
   });

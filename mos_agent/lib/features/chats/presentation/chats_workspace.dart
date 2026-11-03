@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../../integrations/files/attachment_picker.dart';
 import '../../../shared/widgets/resize_handle.dart';
+import '../../../shared/widgets/app_icon.dart';
+import '../../../core/diagnostics/app_log.dart';
+import '../../../integrations/diagnostics/log_window.dart';
 import '../application/chat_controller.dart';
 import '../domain/inference_backend.dart';
 import '../domain/chat.dart';
@@ -27,6 +30,48 @@ class ChatsWorkspace extends StatefulWidget {
 }
 
 class _ChatsWorkspaceState extends State<ChatsWorkspace> {
+  final _logs = LogWindow(AppLog.instance);
+
+  @override
+  void dispose() {
+    _logs.dispose();
+    super.dispose();
+  }
+
+  Future<void> _openLogs() async {
+    try {
+      await _logs.open();
+    } catch (_) {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Session logs'),
+          content: SizedBox(
+            width: 800,
+            child: ListenableBuilder(
+              listenable: AppLog.instance,
+              builder: (context, _) => SingleChildScrollView(
+                child: SelectableText(
+                  AppLog.instance.text.isEmpty
+                      ? 'No diagnostics yet.'
+                      : AppLog.instance.text,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   double _listFraction = 0.2;
   ChatMode? _newChatMode;
   bool _picking = false;
@@ -145,15 +190,6 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
         final width = constraints.maxWidth * _listFraction;
         return Column(
           children: [
-            if (!widget.controller.isDemo)
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: constraints.maxHeight * 0.4,
-                ),
-                child: SingleChildScrollView(
-                  child: BackendConnectionBar(controller: widget.controller),
-                ),
-              ),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -183,7 +219,12 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 8, 16, 8),
+                              padding: const EdgeInsets.fromLTRB(
+                                28,
+                                18,
+                                20,
+                                14,
+                              ),
                               child: Row(
                                 children: [
                                   if (compact)
@@ -203,10 +244,14 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                                           overflow: TextOverflow.ellipsis,
                                           style: Theme.of(context)
                                               .textTheme
-                                              .titleMedium,
+                                              .titleLarge,
                                         ),
                                         Text(
-                                          '${thread.mode.label} mode',
+                                          widget.controller.isDemo
+                                              ? '${thread.mode.label} · Local demo'
+                                              : '${thread.mode.label} · ${widget.controller.destination}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                           style: Theme.of(context)
                                               .textTheme
                                               .labelSmall,
@@ -214,28 +259,29 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                                       ],
                                     ),
                                   ),
-                                  Tooltip(
-                                    message: widget.controller.isDemo
-                                        ? 'No model connected'
-                                        : widget.controller.status ==
-                                              BackendStatus.ready
-                                        ? 'Inference service ready'
-                                        : 'Start inference to connect',
-                                    child: Icon(
-                                      widget.controller.isDemo ||
-                                              widget.controller.status !=
-                                                  BackendStatus.ready
-                                          ? Icons.cloud_off_outlined
-                                          : Icons.check_circle_outline,
-                                      size: 18,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
+                                  BackendConnectionBar(
+                                    controller: widget.controller,
                                   ),
                                 ],
                               ),
                             ),
+                            if (widget.controller.connectionError != null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 28,
+                                ),
+                                child: Semantics(
+                                  liveRegion: true,
+                                  child: Text(
+                                    widget.controller.connectionError!,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error,
+                                    ),
+                                  ),
+                                ),
+                              ),
                             Expanded(
                               child: ChatConversation(
                                 key: ValueKey('conversation-${thread.id}'),
@@ -243,6 +289,14 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                                 demoMode: widget.controller.isDemo,
                               ),
                             ),
+                            if (thread.notice != null)
+                              Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Semantics(
+                                  liveRegion: true,
+                                  child: Text(thread.notice!),
+                                ),
+                              ),
                             if (thread.error != null ||
                                 _attachmentError != null)
                               Padding(
@@ -267,10 +321,11 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                               sendingAllowed:
                                   widget.controller.isDemo ||
                                   widget.controller.status ==
-                                      BackendStatus.ready,
-                              onStopReceiving: widget.controller.isDemo
+                                          BackendStatus.ready &&
+                                      !widget.controller.cancellationPending,
+                              onCancelGeneration: widget.controller.isDemo
                                   ? null
-                                  : () => widget.controller.stopReceiving(
+                                  : () => widget.controller.cancelGeneration(
                                       thread.id,
                                     ),
                               onDraft: (text) => widget.controller.updateDraft(
@@ -282,6 +337,23 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                               onConfigure: _configure,
                               onRemoveAttachment: (path) => widget.controller
                                   .removeAttachment(thread.id, path),
+                            ),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: const EdgeInsets.only(
+                                  right: 20,
+                                  bottom: 4,
+                                ),
+                                child: IconButton(
+                                  tooltip: 'Open logs',
+                                  onPressed: _openLogs,
+                                  icon: const AppIcon(
+                                    AppIconType.wrench,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         );

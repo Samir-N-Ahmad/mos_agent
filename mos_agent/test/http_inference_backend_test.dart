@@ -320,4 +320,53 @@ void main() {
       }
     },
   );
+
+  test('Cancellation POST preserves the scoped chat ID and validates boolean results', () async {
+    for (final result in [true, false]) {
+      var calls = 0;
+      final backend = HttpInferenceBackend(
+        destination: url,
+        clientFactory: () => MockClient((request) async {
+          calls++;
+          expect(request.method, 'POST');
+          expect(request.url.pathSegments, ['cancel', 'chat 7', '']);
+          expect(request.url.queryParameters, {'chatId': 'chat 7'});
+          expect(request.followRedirects, isFalse);
+          return http.Response(
+            jsonEncode({'code': 200, 'inference': result}),
+            200,
+          );
+        }),
+      );
+      expect(await backend.cancelGeneration('chat 7'), result);
+      expect(calls, 1);
+      backend.close();
+    }
+  });
+
+  test(
+    'Cancellation failures and ambiguous results are not silently retried',
+    () async {
+      for (final item in [
+        (500, '{"code":500}'),
+        (200, '{"code":200}'),
+        (200, '{"code":200,"inference":"cancelled"}'),
+      ]) {
+        var calls = 0;
+        final backend = HttpInferenceBackend(
+          destination: url,
+          clientFactory: () => MockClient((_) async {
+            calls++;
+            return http.Response(item.$2, item.$1);
+          }),
+        );
+        await expectLater(
+          backend.cancelGeneration('0'),
+          throwsA(isA<InferenceFailure>()),
+        );
+        expect(calls, 1);
+        backend.close();
+      }
+    },
+  );
 }

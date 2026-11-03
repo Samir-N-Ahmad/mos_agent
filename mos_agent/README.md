@@ -44,8 +44,10 @@ The composer fills the conversation width. Its text area starts at 100 logical
 pixels tall; drag the top grip to resize it (100–260 pixels). The divider and
 composer grip also support Tab focus and arrow keys. Enter sends, Shift+Enter
 adds a newline, and active IME composition does not send. The up arrow sends;
-**Stop receiving response** stops reception while generation may continue on the
-server. The configuration button shows the service destination and available
+**Cancel generation** requests server cancellation for that chat. The button
+is disabled while cancelling. A true result marks the partial response cancelled;
+false or failed requests remain explicitly unconfirmed. Drafts and partial
+replies are preserved. The configuration button shows the service destination and available
 capabilities. Attachments and agent role/style changes are unavailable in backend
 mode because the API has no endpoints for them. Demo mode retains those local
 controls.
@@ -89,3 +91,21 @@ The native file dialog has not been interactively
 verified because Computer Use permissions are unavailable. A macOS build requires
 macOS and Xcode. Other platforms are not validated.
 Coding and design rules live in [AGENTS.md](AGENTS.md).
+
+
+Cancellation now uses the server endpoint. The live schema currently requires
+`chatId` as a query argument as well as the chat ID in the path, so the adapter
+supplies both. The latest synthetic live cancellation returned HTTP 500;
+backend confirmation remains blocked until that server exception is fixed.
+See [cancellation details](docs/backend_api.md#server-cancellation--2-november-2026).
+
+```sh
+flutter test test/cancellation_live_test.dart --dart-define=LIVE_CANCELLATION=true
+```
+
+
+### Redesigned workspace
+
+The redesign is on `codex/mos-agent-redesign` and uses the supplied MOS Agent artwork, dark palette, and typography. The top-right power icon starts inference; the adjacent spinner indicates startup. The bottom-right wrench opens a live, separate macOS logs window containing API status, raw response text, and application errors. Responses can be copied with the share-shaped icon beneath them.
+
+Logs stay in memory for the current app session, bounded to 1,000 entries and 512 Ki characters. They include raw backend output, which may include echoed prompts; they do not fetch the backend's own console logs. Non-macOS platforms currently use a diagnostics dialog. The existing API, streaming, cancellation, mode discovery, draft preservation, keyboard controls, and resizable panes remain in place.
