@@ -129,6 +129,63 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
     }
   }
 
+  Future<void> _showProfile() => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Profile'),
+      content: const SingleChildScrollView(
+        child: Text(
+          'You are not signed in. Account information will appear here when sign-in is connected.',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _showSettings() => showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Settings'),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              widget.controller.isDemo
+                  ? 'Local demo · No model connected'
+                  : 'Inference service: ${widget.controller.destination}',
+            ),
+            const SizedBox(height: 16),
+            Text('Conversation mode: ${widget.controller.active.mode.label}'),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: widget.controller.active.sending
+                  ? null
+                  : () {
+                      Navigator.pop(context);
+                      _configure();
+                    },
+              icon: const Icon(Icons.tune),
+              label: const Text('Agent and chat configuration'),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+
   Widget _list({VoidCallback? onDone, VoidCallback? onModeUpdated}) {
     final modes = widget.controller.modes;
     final selected =
@@ -137,9 +194,16 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
     return ChatList(
       threads: widget.controller.threads,
       selectedId: widget.controller.active.id,
-      demoMode: widget.controller.isDemo,
       modes: modes,
       newChatMode: selected,
+      onProfile: () {
+        onDone?.call();
+        _showProfile();
+      },
+      onSettings: () {
+        onDone?.call();
+        _showSettings();
+      },
       onModeChanged: (mode) {
         setState(() => _newChatMode = mode);
         onModeUpdated?.call();
@@ -334,7 +398,6 @@ class _ChatsWorkspaceState extends State<ChatsWorkspace> {
                               ),
                               onSend: () => widget.controller.send(thread.id),
                               onAttach: _attach,
-                              onConfigure: _configure,
                               onRemoveAttachment: (path) => widget.controller
                                   .removeAttachment(thread.id, path),
                             ),

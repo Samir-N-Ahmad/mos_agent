@@ -8,10 +8,14 @@ class ResizeHandle extends StatelessWidget {
     required this.axis,
     required this.label,
     required this.onDelta,
+    this.showGrip = true,
+    this.thickness = 14,
   });
   final Axis axis;
   final String label;
   final ValueChanged<double> onDelta;
+  final bool showGrip;
+  final double thickness;
 
   @override
   Widget build(BuildContext context) {
@@ -57,21 +61,25 @@ class ResizeHandle extends StatelessWidget {
                       : (d) => onDelta(d.delta.dx),
                   child: Container(
                     width: vertical ? double.infinity : 8,
-                    height: vertical ? 14 : double.infinity,
+                    height: vertical ? thickness : double.infinity,
                     color: focused
                         ? colors.primaryContainer
                         : vertical
                         ? colors.surfaceContainerHigh
                         : colors.surface,
                     alignment: Alignment.center,
-                    child: Container(
-                      width: vertical ? 32 : 2,
-                      height: vertical ? 3 : 32,
-                      decoration: BoxDecoration(
-                        color: focused ? colors.primary : colors.outlineVariant,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+                    child: !showGrip && !focused
+                        ? const SizedBox.shrink()
+                        : Container(
+                            width: vertical ? 32 : 2,
+                            height: vertical ? 3 : 32,
+                            decoration: BoxDecoration(
+                              color: focused
+                                  ? colors.primary
+                                  : colors.outlineVariant,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
                   ),
                 ),
               ),

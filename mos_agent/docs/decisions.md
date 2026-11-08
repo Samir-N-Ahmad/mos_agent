@@ -89,3 +89,33 @@
 - `flutter build macos --debug`: passed with the normal application entry point.
 - A temporary native smoke entry point used synthetic API text to open the actual macOS logs window, confirmed `isVisible`, updated it, and reopened it successfully. No live inference request was needed. The normal application was rebuilt afterward.
 - The rendered desktop preview was visually checked with real fonts and all supplied icons (`build/previews/mos-agent-redesign.png`). Live inference and other operating systems were not revalidated for the visual redesign.
+
+
+## Frameless main window — 8 November 2026
+
+- Accepted a frameless main window with app-drawn controls and a draggable title area, using the already-added `window_manager` 0.6.0 package (MIT license; macOS and Windows implementations). Its Dart 3.13/Flutter 3.47 requirements match the project toolchain. Existing user changes to pubspec and its lockfile are retained; no additional dependency upgrade was requested.
+- Initialize Flutter before resolving the main window. Keep native window operations behind an injected DesktopWindow interface, while main.dart only wires the native adapter into the app. Test widgets use a fake window and never call native window APIs. Capture the main window once to keep controls scoped when the logs window becomes active.
+- The title area is a 44-pixel row within the main workspace, alongside the full-height 60-pixel navigation rail. It uses the workspace background and semantic text/icon colors. macOS controls are left aligned; Windows controls are right aligned. Controls have tooltips, keyboard focus, and descriptive fullscreen/restore states.
+- Five-pixel edge/corner native resize regions are disabled while maximized or fullscreen. The adapter enforces a 480 × 320 logical-pixel minimum. Title dragging and the platform double-click action are separate from button hit areas. Windows uses the package's MaximizeButtonArea for native Snap Layouts support.
+- macOS supports Control–Command–F; Windows supports F11; Escape exits fullscreen. Window changes preserve the existing controller and drafts. The logs utility keeps its own native frame; unsupported targets or unavailable native windows retain their system chrome. Initialization failure restores the system frame.
+- Verification: native macOS smoke check passed for initial frameless state, hidden native buttons, resizable state, native resize, minimize/restore, maximize/restore, fullscreen entry/exit and closing the last window. Deterministic UI checks cover dispatch, double-click/drag, keyboard fullscreen, compact macOS control placement, and draft preservation. Windows runtime/build and Snap Layouts cannot be validated on this macOS host and remain unverified.
+
+- Final verification: formatting and `flutter analyze` passed; the full suite passed 54 tests with three opt-in live backend checks skipped. The four window tests also passed after adding immediate fullscreen shortcuts and a 480 × 320 layout at 2× text scale. Preview: `build/previews/mos-agent-frameless.png` (rendered Windows control arrangement; macOS uses left controls). No live inference requests were made for this UI change.
+
+
+## macOS generated-cache recovery — 8 November 2026
+
+- Reproduced the reported Xcode `failed to save attachment` / `File exists but is not a directory` failure under `build/macos/Build/Intermediates.noindex/XCBuildData`. Dart analysis passed; there was no Dart compilation error.
+- Isolating the Xcode intermediates exposed further I/O errors in `ModuleCache.noindex` and an invalid-argument error writing `.dart_tool/flutter_build/dart_plugin_registrant.dart`. Preserved the affected generated macOS and Dart directories under `.build/retired-xcode-cache/`, then restored dependencies using `flutter pub get --offline` with the existing lockfile.
+- Fresh and subsequent incremental macOS debug builds passed. A file-selector dependency emits an `allowedFileTypes` deprecation warning; no dependency upgrade or application-code change was needed for the build fix. Added a repeatable recovery procedure to README.md.
+
+
+## PDF layout correction — 8 November 2026
+
+- Visually inspected the supplied `/Volumes/Data/Downloads/MOS Agent.pdf`. It shows one rounded history panel, a profile capsule/settings icon anchored at its bottom, and a slim composer pill with an attachment plus outside on the left. The previous navigation rail and tall composer were inconsistent with this reference.
+- Removed the primary navigation rail and its unused section scaffolding. Chats remain mounted as the main workspace. Profile and Settings open local dialogs from a pinned reusable HistoryAccountFooter; opening/closing these dialogs does not recreate chats or lose drafts. No sample account identity or historical dates from the design are represented as real user data.
+- Keep the history panel's existing 20% starting width, resizable divider, mode discovery and compact picker. The full history header/list scrolls independently of the fixed footer, including short windows with enlarged text. Account actions remain accessible in the compact picker.
+- The input is a rounded pill with a 48-pixel initial text area and a subtle six-pixel resize edge. It grows for multiline/wrapped text up to 240 pixels. The attachment plus sits outside on the left. A trailing send control appears for content; cancellation remains available while generating. Agent/chat configuration is accessible through Settings. Keyboard send, IME handling, draft preservation, file availability and controller cancellation behavior are preserved.
+- This accepted update supersedes earlier instructions for the 60-pixel rail and 100-pixel initial text area. The frameless adapter, custom window controls, resize behavior, keyboard shortcuts and logs window are unchanged.
+
+- Verification: full suite passed 55 tests (three opt-in live backend checks skipped), including pinned-footer scrolling, account dialogs, compact/enlarged text, multiline composer growth, attachment placement, streaming/cancellation, and window-control regressions. Visually checked the rendered desktop layout with real fonts against the PDF; removed the input's obsolete decoration label to prevent text clipping in the slim pill. macOS debug build and Flutter analysis passed. No backend calls or Windows build/runtime validation were performed for this update.

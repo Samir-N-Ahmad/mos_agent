@@ -101,20 +101,26 @@ void main() {
       tester.getSize(find.byKey(const ValueKey('chat-list-pane'))).width,
       greaterThan(256),
     );
+    final attachment = tester.getRect(
+      find.byKey(const ValueKey('composer-attachment')),
+    );
+    final pill = tester.getRect(find.byKey(const ValueKey('composer-pill')));
+    expect(attachment.right, lessThan(pill.left));
+    expect(pill.height, lessThan(80));
     final area = find.byKey(const ValueKey('message-input-area'));
-    expect(tester.getSize(area).height, 100);
+    expect(tester.getSize(area).height, 48);
     await tester.drag(
       find.byKey(const ValueKey('composer-resize')),
       const Offset(0, -70),
     );
     await tester.pump();
-    expect(tester.getSize(area).height, greaterThan(100));
+    expect(tester.getSize(area).height, greaterThan(48));
     await tester.drag(
       find.byKey(const ValueKey('composer-resize')),
       const Offset(0, 300),
     );
     await tester.pump();
-    expect(tester.getSize(area).height, 100);
+    expect(tester.getSize(area).height, 48);
     expect(tester.takeException(), isNull);
   });
 
@@ -128,6 +134,10 @@ void main() {
       await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
       await tester.pump();
       expect(controller.active.draft, 'First line\n');
+      expect(
+        tester.getSize(find.byKey(const ValueKey('message-input-area'))).height,
+        greaterThan(48),
+      );
       expect(controller.active.messages.length, 1);
       tester.testTextInput.updateEditingValue(
         const TextEditingValue(
@@ -212,7 +222,9 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    await tester.tap(find.byTooltip('Agent and chat configuration'));
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Agent and chat configuration'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Concise'));
     await tester.pumpAndSettle();
@@ -234,6 +246,8 @@ void main() {
       await mount(tester, size: const Size(480, 320), scale: 2);
       expect(find.byKey(const ValueKey('chat-list-pane')), findsNothing);
       await tester.tap(find.byTooltip('Choose chat'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('new-chat-mode')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('new-chat-mode')));
       await tester.pumpAndSettle();
@@ -271,6 +285,26 @@ void main() {
     },
   );
 
+  testWidgets('Account footer remains pinned while history scrolls', (
+    tester,
+  ) async {
+    for (var index = 0; index < 16; index++) {
+      await controller.newChat();
+    }
+    await mount(tester);
+    final footer = find.byKey(const ValueKey('history-account-footer'));
+    final original = tester.getRect(footer);
+    await tester.drag(
+      find.byKey(const ValueKey('history-scroll')),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.getRect(footer), original);
+    expect(find.byTooltip('Profile'), findsOneWidget);
+    expect(find.byTooltip('Settings'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Desktop conversation preview', (tester) async {
     await mount(tester);
     await tester.pumpWidget(
@@ -288,7 +322,14 @@ void main() {
     if (const bool.fromEnvironment('CAPTURE_UI')) {
       await tester.runAsync(() async {
         final context = tester.element(find.byType(ChatsWorkspace));
-        for (final name in ['share', 'plus', 'settings', 'bot', 'shutdown', 'wrench']) {
+        for (final name in [
+          'share',
+          'plus',
+          'settings',
+          'bot',
+          'shutdown',
+          'wrench',
+        ]) {
           await precacheImage(AssetImage('assets/icons/$name.png'), context);
         }
       });

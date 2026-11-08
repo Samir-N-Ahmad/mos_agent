@@ -7,11 +7,13 @@ class SidebarItem extends StatelessWidget {
     required this.preview,
     required this.selected,
     required this.onTap,
+    this.compact = false,
   });
   final String title;
   final String preview;
   final bool selected;
   final VoidCallback onTap;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -27,20 +29,23 @@ class SidebarItem extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            padding: EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: compact ? 10 : 14,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  maxLines: 2,
+                  maxLines: compact ? 1 : 2,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
                 Text(
                   preview,
-                  maxLines: 3,
+                  maxLines: compact ? 1 : 3,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall,
                 ),

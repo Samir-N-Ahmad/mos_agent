@@ -16,6 +16,7 @@ Preserve these observed conventions:
 - Use a sidebar for the desktop workspace and a bottom prompt composer for assistance.
 - Give the composer empty-input protection, clear send availability, multiline input, Enter to send, and Shift+Enter for a newline when using a physical keyboard.
 - Use the supplied MOS Agent reference styling and PNG icons for the accepted redesign. Keep shared light/dark palette and typography tokens; dark remains the default. Inference starts through the top-right icon-only power control with an adjacent loading indicator. The bottom-right diagnostics control opens a separate macOS logs window, with bounded session-only raw API diagnostics.
+- The main macOS/Windows window is frameless with an app-drawn draggable title area and accessible window controls. Keep native window operations behind the injected desktop window adapter; preserve edge resizing, minimum size, fullscreen shortcuts, and drafts during window changes. The separate macOS logs utility retains its native frame.
 - Bundle sample visual assets explicitly through `pubspec.yaml` and use `ImageProvider` where widgets need interchangeable image sources.
 - Maintain Flutter linting, null safety, and a committed application dependency lockfile. Moaather declares Dart `^3.10.7`; select and document a compatible Flutter/Dart toolchain for the new app instead of blindly copying that version.
 - Keep platform-specific implementations behind Flutter-facing interfaces.
@@ -28,7 +29,7 @@ Everything after this section is a recommended addition for the help-desk applic
 
 - Build an employee assistant. Keep the employee in control of customer communication and consequential changes.
 - Start with a complete workflow: select a ticket → summarize → retrieve relevant knowledge → propose next steps → draft a reply → review → optionally perform an authorized action.
-- Accepted desktop navigation: icon-only Profile, Settings, Chats, and Media, with Logout at the bottom of a full-height, 60-logical-pixel sidebar. Chats is the initial section. Introduce ticket details, evidence, and editable drafts within the requested workflows.
+- Accepted desktop layout: one left panel for chat history, with Profile and Settings pinned at the bottom. Do not restore the separate icon navigation rail. Account data must remain accurately labeled when authentication is unavailable. Introduce ticket details, evidence, and editable drafts within the requested workflows.
 - Treat desktop as the primary target. Confirm which operating systems must ship before choosing native integrations. Existing platform folders are not proof of support.
 - Before a dependent implementation, record the ticket system, authentication method, model provider, local-model requirements, data retention, and supported operating systems in `docs/decisions.md`.
 - If those choices are unknown, proceed with local fixtures and replaceable adapters. Clearly label demo data and unavailable integrations.
@@ -130,7 +131,7 @@ These are agents inside the shipped application, separate from AI coding agents 
 - Use `snake_case.dart` filenames, `UpperCamelCase` types, and `lowerCamelCase` members. Use `const` where practical and avoid unused imports or dead code.
 - Build navigation, ticket lists, evidence panels, drafts, and agent status as reusable components. Never leave a visible enabled control attached to an empty callback.
 - Use constraints and adaptive layouts. Collapse the sidebar and stack panels for narrow windows; allow scrolling when content exceeds available height.
-- In Chats, start the chat list at 20% of the available workspace width with a resizable divider. Use the remaining width for the conversation and a full-width composer whose text input starts at 100 logical pixels high and can be resized. Provide file attachment, send, and agent/chat configuration controls. Preserve the 60-pixel primary sidebar; collapse the secondary chat list to a picker in narrow windows.
+- Start chat history at 20% of the workspace width with a resizable divider; collapse it to a picker in narrow windows. Keep Profile and Settings pinned below the scrolling history. Follow the supplied PDF composer design: a slim rounded pill with an external attachment plus button on the left. Start the text area at 48 logical pixels, grow for multiline drafts, and retain an accessible resize edge. Show send/cancel controls at the trailing edge; access agent/chat configuration through the history footer Settings dialog. Preserve the frameless window and custom controls.
 - Verify the minimum supported window size, a typical desktop window, and enlarged text. Do not assume a fixed three-column layout fits.
 - Support keyboard navigation, visible focus, screen-reader labels, tooltips, and non-color status indicators. Preserve mixed-language text and support RTL if required by users.
 - Respect IME composition when handling Enter. Support Shift+Enter and the platform's software keyboard without accidentally sending incomplete text.

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app/help_desk_app.dart';
 import 'core/diagnostics/app_log.dart';
+import 'integrations/window/desktop_window.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,5 +23,11 @@ void main() {
     return false;
   };
   AppLog.instance.add('Application', 'MOS Agent started');
-  runApp(const HelpDeskApp());
+  NativeDesktopWindow? window;
+  try {
+    window = NativeDesktopWindow.initialize();
+  } catch (error, stack) {
+    AppLog.instance.add('Window initialization error', '$error\n$stack');
+  }
+  runApp(HelpDeskApp(window: window));
 }
